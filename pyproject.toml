@@ -7,7 +7,7 @@ name = "sleep-detector-sdk"
 version = "0.1.0"
 description = "Python SDK for real-time drowsiness/sleep detection using Eye Aspect Ratio (EAR) algorithm"
 readme = "README.md"
-license = "MIT"
+license = {text = "MIT"}
 requires-python = ">=3.8"
 authors = [
     {name = "Agha Pathan", email = "aghaPathan@users.noreply.github.com"},
