@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sleep-detector-sdk"
+version = "0.1.0"
+description = "Python SDK for real-time drowsiness/sleep detection using Eye Aspect Ratio (EAR) algorithm"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+authors = [
+    {name = "Agha Pathan", email = "aghaPathan@users.noreply.github.com"},
+]
+keywords = ["drowsiness", "sleep", "detection", "eye", "EAR", "dlib", "opencv", "SDK"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+    "opencv-python>=4.5.0,<5.0.0",
+    "dlib>=19.22.0",
+    "scipy>=1.7.0",
+    "imutils>=0.5.4",
+    "numpy>=1.21.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+sleep-detector-sdk = "sleep_detector_sdk.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/aghaPathan/sleep-detector-sdk"
+Issues = "https://github.com/aghaPathan/sleep-detector-sdk/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.setuptools.packages.find]
+include = ["sleep_detector_sdk*"]
