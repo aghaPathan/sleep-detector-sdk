@@ -393,3 +393,96 @@ class TestSensorIntegration:
         result = sdk.process_frame(frame)
 
         assert result.fatigue_score is None
+
+
+from sleep_detector_sdk.types import GazeZone
+
+
+class TestGazeTemporalIntegration:
+    def test_temporal_property_accessible(self):
+        sdk, _, _ = _make_sdk()
+        assert sdk.temporal is not None
+
+    def test_gaze_away_event_emitted(self):
+        sdk, mock_detector, mock_predictor = _make_sdk()
+        mock_detector.return_value = [_mock_face()]
+
+        gaze_events = []
+        sdk.on("gaze_away", lambda e: gaze_events.append(e))
+
+        # First frame: forward gaze (default landmarks → ROAD)
+        mock_predictor.return_value = _mock_shape_for_landmarks(ear_high=True)
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        sdk.process_frame(frame)
+
+        # Now we need to make gaze estimator return non-ROAD
+        # Patch the gaze estimator to return IN_VEHICLE
+        from sleep_detector_sdk.types import GazeEvent
+        with patch.object(sdk._gaze_estimator, 'estimate', return_value=GazeEvent(zone=GazeZone.IN_VEHICLE, yaw=0.5, pitch=0.0, timestamp=time.monotonic())):
+            sdk.process_frame(frame)
+
+        assert len(gaze_events) == 1
+
+    def test_gaze_returned_event_emitted(self):
+        sdk, mock_detector, mock_predictor = _make_sdk()
+        mock_detector.return_value = [_mock_face()]
+        mock_predictor.return_value = _mock_shape_for_landmarks(ear_high=True)
+
+        returned_events = []
+        sdk.on("gaze_returned", lambda e: returned_events.append(e))
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        from sleep_detector_sdk.types import GazeEvent
+        # Go away
+        with patch.object(sdk._gaze_estimator, 'estimate', return_value=GazeEvent(zone=GazeZone.IN_VEHICLE, yaw=0.5, pitch=0.0, timestamp=time.monotonic())):
+            sdk.process_frame(frame)
+        # Come back
+        with patch.object(sdk._gaze_estimator, 'estimate', return_value=GazeEvent(zone=GazeZone.ROAD, yaw=0.0, pitch=0.0, timestamp=time.monotonic())):
+            sdk.process_frame(frame)
+
+        assert len(returned_events) == 1
+
+    def test_eye_close_feeds_temporal(self):
+        sdk, mock_detector, mock_predictor = _make_sdk()
+        mock_detector.return_value = [_mock_face()]
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        # Open eyes first
+        mock_predictor.return_value = _mock_shape_for_landmarks(ear_high=True)
+        sdk.process_frame(frame)
+
+        # Close eyes
+        mock_predictor.return_value = _mock_shape_for_landmarks(ear_high=False)
+        sdk.process_frame(frame)
+        # Process again for CLOSED state
+        sdk.process_frame(frame)
+
+        state = sdk.temporal.current_state
+        assert state.t_close is not None
+
+    def test_temporal_engine_starts_with_detector(self):
+        sdk, mock_detector, _ = _make_sdk()
+        mock_detector.return_value = []
+
+        with patch("sleep_detector_sdk.detector.CameraManager") as MockCam:
+            mock_cam = MagicMock()
+            mock_cam.__enter__ = MagicMock(return_value=mock_cam)
+            mock_cam.__exit__ = MagicMock(return_value=False)
+            mock_cam.read_frame.side_effect = lambda: (sdk.stop(), None)[1]
+            MockCam.return_value = mock_cam
+
+            sdk.start(camera_index=0, blocking=True)
+
+        # After stop, temporal engine should also be stopped
+        assert not sdk.temporal.is_running
+
+    def test_backward_compat_no_face_no_gaze(self):
+        sdk, mock_detector, _ = _make_sdk()
+        mock_detector.return_value = []
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = sdk.process_frame(frame)
+        # Should not crash — gaze only runs when face detected
+        assert result.face_detected is False

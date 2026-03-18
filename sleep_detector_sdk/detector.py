@@ -13,8 +13,10 @@ from sleep_detector_sdk.camera import CameraManager
 from sleep_detector_sdk.ear import compute_ear
 from sleep_detector_sdk.events import EventEmitter
 from sleep_detector_sdk.fusion import FusionEngine
+from sleep_detector_sdk.gaze import GazeEstimator
 from sleep_detector_sdk.model_manager import ModelManager
 from sleep_detector_sdk.sensors import SensorRegistry
+from sleep_detector_sdk.temporal import TemporalEngine
 from sleep_detector_sdk.types import (
     DEFAULT_ALERT_COOLDOWN,
     DEFAULT_CLOSED_SECONDS,
@@ -28,6 +30,8 @@ from sleep_detector_sdk.types import (
     FatigueSignal,
     FrameEvent,
     FrameResult,
+    GazeZone,
+    GazeEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,6 +68,11 @@ class SleepDetectorSDK:
         # Sensor and fusion subsystems
         self._sensor_registry = SensorRegistry()
         self._fusion_engine = FusionEngine()
+
+        # Gaze and temporal subsystems
+        self._gaze_estimator = GazeEstimator()
+        self._temporal_engine = TemporalEngine()
+        self._last_gaze_zone: GazeZone = GazeZone.ROAD
 
         # Event system
         self._emitter = EventEmitter()
@@ -143,6 +152,11 @@ class SleepDetectorSDK:
         """Return registered sensor providers."""
         return self._sensor_registry.sensors
 
+    @property
+    def temporal(self):
+        """Access the TemporalEngine for state queries."""
+        return self._temporal_engine
+
     # --- Frame processing ---
 
     def _extract_landmarks(self, gray: np.ndarray, face) -> np.ndarray:
@@ -193,6 +207,16 @@ class SleepDetectorSDK:
             with self._lock:
                 self._current_ear = ear_value
 
+            # Gaze estimation and temporal recording
+            gaze_result = self._gaze_estimator.estimate(landmarks)
+            if gaze_result.zone != self._last_gaze_zone:
+                if gaze_result.zone != GazeZone.ROAD and self._last_gaze_zone == GazeZone.ROAD:
+                    self._emitter.emit("gaze_away", gaze_result)
+                elif gaze_result.zone == GazeZone.ROAD and self._last_gaze_zone != GazeZone.ROAD:
+                    self._emitter.emit("gaze_returned", gaze_result)
+                self._last_gaze_zone = gaze_result.zone
+            self._temporal_engine.record_gaze(gaze_result.zone)
+
             # Submit vision signal to fusion engine
             vision_score = (
                 max(0.0, min(1.0, 1.0 - (ear_value / self._ear_threshold)))
@@ -229,6 +253,12 @@ class SleepDetectorSDK:
                     ),
                 )
                 self._eye_state = current_eye_state
+
+            # Feed eye state to temporal engine
+            if current_eye_state == EyeState.CLOSED:
+                self._temporal_engine.record_eye_close()
+            elif current_eye_state == EyeState.OPEN:
+                self._temporal_engine.record_eye_open()
 
             # Check drowsiness
             with self._lock:
@@ -319,6 +349,7 @@ class SleepDetectorSDK:
         """Start the detection loop with managed camera."""
         self._detector_state = DetectorState.RUNNING
         self._stop_event.clear()
+        self._temporal_engine.start()
         self._install_signal_handlers()
 
         if blocking:
@@ -336,6 +367,7 @@ class SleepDetectorSDK:
 
     def stop(self) -> None:
         """Stop the detection loop."""
+        self._temporal_engine.stop()
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=5.0)
