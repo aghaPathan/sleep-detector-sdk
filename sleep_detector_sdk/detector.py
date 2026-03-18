@@ -12,6 +12,7 @@ from sleep_detector_sdk.alerts import AlertManager
 from sleep_detector_sdk.camera import CameraManager
 from sleep_detector_sdk.ear import compute_ear
 from sleep_detector_sdk.events import EventEmitter
+from sleep_detector_sdk.fatigue_model import FatigueModel
 from sleep_detector_sdk.fusion import FusionEngine
 from sleep_detector_sdk.gaze import GazeEstimator
 from sleep_detector_sdk.model_manager import ModelManager
@@ -68,6 +69,9 @@ class SleepDetectorSDK:
         # Sensor and fusion subsystems
         self._sensor_registry = SensorRegistry()
         self._fusion_engine = FusionEngine()
+
+        # Adaptive fatigue model
+        self._fatigue_model = FatigueModel(static_threshold=ear_threshold)
 
         # Gaze and temporal subsystems
         self._gaze_estimator = GazeEstimator()
@@ -218,13 +222,10 @@ class SleepDetectorSDK:
             self._temporal_engine.record_gaze(gaze_result.zone)
 
             # Submit vision signal to fusion engine
-            vision_score = (
-                max(0.0, min(1.0, 1.0 - (ear_value / self._ear_threshold)))
-                if self._ear_threshold > 0
-                else 0.0
-            )
+            eye_closed = ear_value < self._ear_threshold
+            vision_score, vision_confidence = self._fatigue_model.score(ear_value, eye_closed)
             self._fusion_engine.submit_signal(
-                FatigueSignal(score=vision_score, confidence=1.0, source="vision", timestamp=now)
+                FatigueSignal(score=vision_score, confidence=vision_confidence, source="vision", timestamp=now)
             )
 
             # Determine eye state

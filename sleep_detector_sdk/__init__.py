@@ -5,6 +5,7 @@ __version__ = "0.2.0"
 from sleep_detector_sdk.alerts import AlertHandler, AlertManager, AlertProvider, TieredAlertManager
 from sleep_detector_sdk.ear import compute_ear
 from sleep_detector_sdk.events import EventEmitter
+from sleep_detector_sdk.fatigue_model import CalibrationState, FatigueFeatures, FatigueModel
 from sleep_detector_sdk.fusion import FusionEngine
 from sleep_detector_sdk.gaze import GazeEstimator
 from sleep_detector_sdk.model_manager import ModelManager
@@ -47,7 +48,10 @@ __all__ = [
     "AlertManager",
     "AlertProvider",
     "TieredAlertManager",
+    "CalibrationState",
     "EventEmitter",
+    "FatigueFeatures",
+    "FatigueModel",
     "FusionEngine",
     "GazeEstimator",
     "HeadPoseResult",
