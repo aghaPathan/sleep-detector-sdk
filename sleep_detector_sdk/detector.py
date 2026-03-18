@@ -1,6 +1,7 @@
 """Core SleepDetectorSDK class — orchestrates drowsiness detection."""
 
 import logging
+import signal
 import threading
 import time
 from typing import Optional
@@ -23,6 +24,7 @@ from sleep_detector_sdk.types import (
     FaceEvent,
     FaceLostEvent,
     FrameEvent,
+    FrameResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -136,7 +138,7 @@ class SleepDetectorSDK:
             coords[i] = (shape.part(i).x, shape.part(i).y)
         return coords
 
-    def process_frame(self, frame: np.ndarray) -> None:
+    def process_frame(self, frame: np.ndarray) -> FrameResult:
         """Process a single frame for drowsiness detection."""
         now = time.monotonic()
         gray = frame
@@ -244,15 +246,50 @@ class SleepDetectorSDK:
             ),
         )
 
+        return FrameResult(
+            ear_value=ear_value,
+            eye_state=self._eye_state,
+            face_detected=face_detected,
+            is_drowsy=self.is_drowsy,
+            timestamp=now,
+        )
+
     # --- Managed camera loop ---
+
+    def _install_signal_handlers(self) -> None:
+        """Install SIGINT/SIGTERM handlers for graceful shutdown."""
+        if threading.current_thread() is not threading.main_thread():
+            return
+        self._prev_sigint = signal.getsignal(signal.SIGINT)
+        self._prev_sigterm = signal.getsignal(signal.SIGTERM)
+
+        def _handle_signal(signum, frame):
+            logger.info("Received signal %s, stopping detector...", signum)
+            self.stop()
+
+        signal.signal(signal.SIGINT, _handle_signal)
+        signal.signal(signal.SIGTERM, _handle_signal)
+
+    def _restore_signal_handlers(self) -> None:
+        """Restore original signal handlers."""
+        if threading.current_thread() is not threading.main_thread():
+            return
+        if hasattr(self, "_prev_sigint"):
+            signal.signal(signal.SIGINT, self._prev_sigint)
+        if hasattr(self, "_prev_sigterm"):
+            signal.signal(signal.SIGTERM, self._prev_sigterm)
 
     def start(self, camera_index: int = 0, blocking: bool = True) -> None:
         """Start the detection loop with managed camera."""
         self._detector_state = DetectorState.RUNNING
         self._stop_event.clear()
+        self._install_signal_handlers()
 
         if blocking:
-            self._run_loop(camera_index)
+            try:
+                self._run_loop(camera_index)
+            finally:
+                self._restore_signal_handlers()
         else:
             self._thread = threading.Thread(
                 target=self._run_loop,
@@ -268,6 +305,7 @@ class SleepDetectorSDK:
             self._thread.join(timeout=5.0)
             self._thread = None
         self._detector_state = DetectorState.STOPPED
+        self._restore_signal_handlers()
 
     def _run_loop(self, camera_index: int) -> None:
         """Internal camera loop."""

@@ -17,6 +17,7 @@ from sleep_detector_sdk.types import (
     FaceEvent,
     FaceLostEvent,
     FrameEvent,
+    FrameResult,
 )
 
 # Lazy import for SleepDetectorSDK to avoid requiring dlib at import time
@@ -41,6 +42,7 @@ __all__ = [
     "FaceEvent",
     "FaceLostEvent",
     "FrameEvent",
+    "FrameResult",
     "DEFAULT_EAR_THRESHOLD",
     "DEFAULT_CLOSED_SECONDS",
     "DEFAULT_ALERT_COOLDOWN",

@@ -58,3 +58,13 @@ class FrameEvent:
     eye_state: EyeState
     face_detected: bool
     timestamp: float
+
+
+@dataclass(frozen=True)
+class FrameResult:
+    """Result returned by process_frame() for each processed frame."""
+    ear_value: float
+    eye_state: EyeState
+    face_detected: bool
+    is_drowsy: bool
+    timestamp: float

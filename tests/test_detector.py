@@ -12,7 +12,7 @@ mock_dlib = MagicMock()
 sys.modules.setdefault("dlib", mock_dlib)
 
 from sleep_detector_sdk.detector import SleepDetectorSDK
-from sleep_detector_sdk.types import EyeState
+from sleep_detector_sdk.types import EyeState, FrameResult
 
 
 def _make_sdk(**kwargs):
@@ -229,3 +229,98 @@ class TestProcessFrame:
         # Process with open eyes — should NOT trigger drowsiness
         sdk.process_frame(frame)
         assert len(drowsy_events) == 0
+
+
+class TestProcessFrameReturnsResult:
+    def test_returns_frame_result_no_face(self):
+        sdk, mock_detector, _ = _make_sdk()
+        mock_detector.return_value = []
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = sdk.process_frame(frame)
+
+        assert isinstance(result, FrameResult)
+        assert result.face_detected is False
+        assert result.ear_value == 0.0
+        assert result.eye_state == EyeState.OPEN
+        assert result.is_drowsy is False
+        assert result.timestamp > 0
+
+    def test_returns_frame_result_with_face(self):
+        sdk, mock_detector, mock_predictor = _make_sdk()
+        mock_detector.return_value = [_mock_face()]
+        mock_predictor.return_value = _mock_shape_for_landmarks(ear_high=True)
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = sdk.process_frame(frame)
+
+        assert isinstance(result, FrameResult)
+        assert result.face_detected is True
+        assert result.ear_value > 0
+        assert result.eye_state == EyeState.OPEN
+        assert result.is_drowsy is False
+
+    def test_returns_drowsy_result_after_threshold(self):
+        sdk, mock_detector, mock_predictor = _make_sdk(closed_duration=0.1)
+        mock_detector.return_value = [_mock_face()]
+        mock_predictor.return_value = _mock_shape_for_landmarks(ear_high=False)
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        sdk.process_frame(frame)
+        time.sleep(0.15)
+        result = sdk.process_frame(frame)
+
+        assert result.is_drowsy is True
+        assert result.face_detected is True
+
+
+class TestSignalHandling:
+    def test_signal_handlers_installed_on_start(self):
+        import signal as sig
+        sdk, mock_detector, _ = _make_sdk()
+        mock_detector.return_value = []
+
+        original_sigint = sig.getsignal(sig.SIGINT)
+        original_sigterm = sig.getsignal(sig.SIGTERM)
+
+        # Patch CameraManager to avoid real camera
+        with patch("sleep_detector_sdk.detector.CameraManager") as MockCam:
+            mock_cam_instance = MagicMock()
+            mock_cam_instance.__enter__ = MagicMock(return_value=mock_cam_instance)
+            mock_cam_instance.__exit__ = MagicMock(return_value=False)
+            # Return one frame then trigger stop
+            mock_cam_instance.read_frame.side_effect = lambda: (sdk.stop(), None)[1]
+            MockCam.return_value = mock_cam_instance
+
+            sdk.start(camera_index=0, blocking=True)
+
+        # After stop, original handlers should be restored
+        assert sig.getsignal(sig.SIGINT) == original_sigint
+        assert sig.getsignal(sig.SIGTERM) == original_sigterm
+
+    def test_sigint_triggers_stop(self):
+        import signal as sig
+        sdk, mock_detector, _ = _make_sdk()
+        mock_detector.return_value = []
+
+        with patch("sleep_detector_sdk.detector.CameraManager") as MockCam:
+            mock_cam_instance = MagicMock()
+            mock_cam_instance.__enter__ = MagicMock(return_value=mock_cam_instance)
+            mock_cam_instance.__exit__ = MagicMock(return_value=False)
+
+            call_count = [0]
+
+            def read_side_effect():
+                call_count[0] += 1
+                if call_count[0] == 2:
+                    # Simulate SIGINT by calling the handler directly
+                    handler = sig.getsignal(sig.SIGINT)
+                    handler(sig.SIGINT, None)
+                return np.zeros((480, 640, 3), dtype=np.uint8)
+
+            mock_cam_instance.read_frame.side_effect = read_side_effect
+            MockCam.return_value = mock_cam_instance
+
+            sdk.start(camera_index=0, blocking=True)
+
+        assert sdk.is_running is False
