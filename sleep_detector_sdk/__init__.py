@@ -2,10 +2,16 @@
 
 __version__ = "0.1.0"
 
-from sleep_detector_sdk.alerts import AlertHandler, AlertManager
+from sleep_detector_sdk.alerts import AlertHandler, AlertManager, AlertProvider, TieredAlertManager
 from sleep_detector_sdk.ear import compute_ear
 from sleep_detector_sdk.events import EventEmitter
+from sleep_detector_sdk.fusion import FusionEngine
+from sleep_detector_sdk.gaze import GazeEstimator
 from sleep_detector_sdk.model_manager import ModelManager
+from sleep_detector_sdk.pose import HeadPoseResult, NodDetector, PoseEstimator
+from sleep_detector_sdk.privacy import PrivacyConfig
+from sleep_detector_sdk.sensors import SensorProvider, SensorRegistry
+from sleep_detector_sdk.temporal import TemporalEngine
 from sleep_detector_sdk.types import (
     DEFAULT_ALERT_COOLDOWN,
     DEFAULT_CLOSED_SECONDS,
@@ -39,8 +45,19 @@ __all__ = [
     "SleepDetectorSDK",
     "AlertHandler",
     "AlertManager",
+    "AlertProvider",
+    "TieredAlertManager",
     "EventEmitter",
+    "FusionEngine",
+    "GazeEstimator",
+    "HeadPoseResult",
     "ModelManager",
+    "NodDetector",
+    "PoseEstimator",
+    "PrivacyConfig",
+    "SensorProvider",
+    "SensorRegistry",
+    "TemporalEngine",
     "compute_ear",
     "AlertTier",
     "EyeState",

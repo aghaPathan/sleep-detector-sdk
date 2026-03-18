@@ -68,6 +68,7 @@ class FrameResult:
     face_detected: bool
     is_drowsy: bool
     timestamp: float
+    fatigue_score: Optional[float] = None
 
 
 @dataclass(frozen=True)

@@ -12,7 +12,9 @@ from sleep_detector_sdk.alerts import AlertManager
 from sleep_detector_sdk.camera import CameraManager
 from sleep_detector_sdk.ear import compute_ear
 from sleep_detector_sdk.events import EventEmitter
+from sleep_detector_sdk.fusion import FusionEngine
 from sleep_detector_sdk.model_manager import ModelManager
+from sleep_detector_sdk.sensors import SensorRegistry
 from sleep_detector_sdk.types import (
     DEFAULT_ALERT_COOLDOWN,
     DEFAULT_CLOSED_SECONDS,
@@ -23,6 +25,7 @@ from sleep_detector_sdk.types import (
     EyeStateEvent,
     FaceEvent,
     FaceLostEvent,
+    FatigueSignal,
     FrameEvent,
     FrameResult,
 )
@@ -57,6 +60,10 @@ class SleepDetectorSDK:
         import dlib
         self._face_detector = dlib.get_frontal_face_detector()
         self._landmark_predictor = dlib.shape_predictor(self._model_path)
+
+        # Sensor and fusion subsystems
+        self._sensor_registry = SensorRegistry()
+        self._fusion_engine = FusionEngine()
 
         # Event system
         self._emitter = EventEmitter()
@@ -127,6 +134,15 @@ class SleepDetectorSDK:
         """Register an AlertHandler subclass."""
         self._alert_manager.add_handler(handler)
 
+    def register_sensor(self, provider) -> None:
+        """Register an external SensorProvider for multi-modal fusion."""
+        self._sensor_registry.register(provider)
+
+    @property
+    def sensors(self):
+        """Return registered sensor providers."""
+        return self._sensor_registry.sensors
+
     # --- Frame processing ---
 
     def _extract_landmarks(self, gray: np.ndarray, face) -> np.ndarray:
@@ -176,6 +192,16 @@ class SleepDetectorSDK:
 
             with self._lock:
                 self._current_ear = ear_value
+
+            # Submit vision signal to fusion engine
+            vision_score = (
+                max(0.0, min(1.0, 1.0 - (ear_value / self._ear_threshold)))
+                if self._ear_threshold > 0
+                else 0.0
+            )
+            self._fusion_engine.submit_signal(
+                FatigueSignal(score=vision_score, confidence=1.0, source="vision", timestamp=now)
+            )
 
             # Determine eye state
             if ear_value < self._ear_threshold:
@@ -234,6 +260,15 @@ class SleepDetectorSDK:
 
         self._face_was_present = face_detected
 
+        # Read external sensors and compute fusion
+        for signal in self._sensor_registry.read_all():
+            self._fusion_engine.submit_signal(signal)
+
+        fatigue_score = None
+        if self._sensor_registry.sensors:
+            fusion_result = self._fusion_engine.compute()
+            fatigue_score = fusion_result.fatigue_score
+
         # Always emit frame_processed
         self._emitter.emit(
             "frame_processed",
@@ -252,6 +287,7 @@ class SleepDetectorSDK:
             face_detected=face_detected,
             is_drowsy=self.is_drowsy,
             timestamp=now,
+            fatigue_score=fatigue_score,
         )
 
     # --- Managed camera loop ---

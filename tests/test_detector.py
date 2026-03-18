@@ -2,6 +2,7 @@
 
 import sys
 import time
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -12,7 +13,8 @@ mock_dlib = MagicMock()
 sys.modules.setdefault("dlib", mock_dlib)
 
 from sleep_detector_sdk.detector import SleepDetectorSDK
-from sleep_detector_sdk.types import EyeState, FrameResult
+from sleep_detector_sdk.sensors import SensorProvider
+from sleep_detector_sdk.types import EyeState, FatigueSignal, FrameResult, SensorMetadata
 
 
 def _make_sdk(**kwargs):
@@ -324,3 +326,70 @@ class TestSignalHandling:
             sdk.start(camera_index=0, blocking=True)
 
         assert sdk.is_running is False
+
+
+# ---------------------------------------------------------------------------
+# MockSensor for integration tests
+# ---------------------------------------------------------------------------
+
+class MockSensor(SensorProvider):
+    """Minimal SensorProvider that always returns a fixed FatigueSignal."""
+
+    def __init__(self, score: float = 0.7, confidence: float = 0.9, name: str = "mock"):
+        self._score = score
+        self._confidence = confidence
+        self._name = name
+
+    def connect(self) -> None:
+        pass
+
+    def disconnect(self) -> None:
+        pass
+
+    def metadata(self) -> SensorMetadata:
+        return SensorMetadata(name=self._name, version="1.0", sampling_hz=25.0)
+
+    def read(self) -> Optional[FatigueSignal]:
+        import time as _time
+        return FatigueSignal(
+            score=self._score,
+            confidence=self._confidence,
+            source=self._name,
+            timestamp=_time.time(),
+        )
+
+
+class TestSensorIntegration:
+    def test_register_sensor(self):
+        """Registering a sensor increases sdk.sensors length to 1."""
+        sdk, _, _ = _make_sdk()
+        sensor = MockSensor()
+        sdk.register_sensor(sensor)
+        assert len(sdk.sensors) == 1
+        assert sdk.sensors[0] is sensor
+
+    def test_process_frame_includes_fatigue_score(self):
+        """With a registered sensor and a face detected, result.fatigue_score is not None."""
+        sdk, mock_detector, mock_predictor = _make_sdk()
+        mock_detector.return_value = [_mock_face()]
+        mock_predictor.return_value = _mock_shape_for_landmarks(ear_high=True)
+
+        sensor = MockSensor(score=0.7, confidence=0.9, name="mock")
+        sdk.register_sensor(sensor)
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = sdk.process_frame(frame)
+
+        assert result.fatigue_score is not None
+        assert 0.0 <= result.fatigue_score <= 1.0
+
+    def test_backward_compat_no_sensors(self):
+        """With no sensors registered, result.fatigue_score is None."""
+        sdk, mock_detector, mock_predictor = _make_sdk()
+        mock_detector.return_value = [_mock_face()]
+        mock_predictor.return_value = _mock_shape_for_landmarks(ear_high=True)
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = sdk.process_frame(frame)
+
+        assert result.fatigue_score is None
