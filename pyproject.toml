@@ -37,9 +37,17 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]
+steering = []
+physiological = []
+posture = []
+all = []
 
 [project.scripts]
 sleep-detector-sdk = "sleep_detector_sdk.cli:main"
+
+[project.entry-points."sleep_detector_sdk.sensors"]
+steering = "sleep_detector_sdk.plugins.steering:SteeringProvider"
+physiological = "sleep_detector_sdk.plugins.physiological:PhysiologicalProvider"
 
 [project.urls]
 Homepage = "https://github.com/aghaPathan/sleep-detector-sdk"
