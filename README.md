@@ -6,6 +6,10 @@
 
 A Python SDK for real-time drowsiness and sleep detection using the Eye Aspect Ratio (EAR) algorithm. It uses dlib's 68-point facial landmark predictor to track eye openness and fires configurable events when drowsiness is detected. Works with any camera or frame source -- bring your own frames, or let the SDK manage an OpenCV camera for you.
 
+## Overview
+
+![Sleep Detector SDK Infographic](sleep-detector-sdk-info-graphic.png)
+
 ## Features
 
 - Real-time Eye Aspect Ratio (EAR) computation from 68-point facial landmarks
