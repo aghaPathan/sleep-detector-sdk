@@ -37,8 +37,8 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]
-steering = []
-physiological = []
+steering = ["python-can>=4.0", "obd>=0.7"]
+physiological = ["bleak>=0.20"]
 posture = []
 all = []
 
