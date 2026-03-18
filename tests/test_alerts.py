@@ -68,3 +68,99 @@ class TestAlertManager:
 
         assert len(handler.alerts) == 1
         assert len(callback_received) == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 7 — TieredAlertManager
+# ---------------------------------------------------------------------------
+
+from sleep_detector_sdk.alerts import AlertProvider, TieredAlertManager  # noqa: E402
+from sleep_detector_sdk.types import AlertTier, FusionResult  # noqa: E402
+
+
+class DummyAlertProvider(AlertProvider):
+    """Test helper that records trigger/cancel calls."""
+
+    def __init__(self):
+        self.triggered = []   # list of (tier, result) tuples
+        self.cancelled = 0
+
+    def trigger(self, tier: AlertTier, result: FusionResult) -> None:
+        self.triggered.append((tier, result))
+
+    def cancel(self) -> None:
+        self.cancelled += 1
+
+
+def _make_result(tier: AlertTier, score: float = 0.5) -> FusionResult:
+    return FusionResult(
+        fatigue_score=score,
+        tier=tier,
+        signals=[],
+        timestamp=0.0,
+    )
+
+
+class TestAlertProvider:
+    def test_cannot_instantiate_abc_directly(self):
+        with pytest.raises(TypeError):
+            AlertProvider()  # type: ignore[abstract]
+
+
+class TestTieredAlertManager:
+    def test_dispatches_to_correct_tier(self):
+        manager = TieredAlertManager()
+        provider = DummyAlertProvider()
+        manager.register_provider(AlertTier.SILENT, provider)
+
+        result = _make_result(AlertTier.SILENT)
+        manager.dispatch(result)
+
+        assert len(provider.triggered) == 1
+        assert provider.triggered[0][0] == AlertTier.SILENT
+
+    def test_escalation_silent_to_audible(self):
+        manager = TieredAlertManager()
+        silent_provider = DummyAlertProvider()
+        audible_provider = DummyAlertProvider()
+        manager.register_provider(AlertTier.SILENT, silent_provider)
+        manager.register_provider(AlertTier.AUDIBLE, audible_provider)
+
+        manager.dispatch(_make_result(AlertTier.SILENT))
+        assert manager.current_tier == AlertTier.SILENT
+
+        manager.dispatch(_make_result(AlertTier.AUDIBLE))
+        assert manager.current_tier == AlertTier.AUDIBLE
+        assert len(audible_provider.triggered) == 1
+
+    def test_deescalation_audible_to_silent(self):
+        manager = TieredAlertManager()
+        silent_provider = DummyAlertProvider()
+        audible_provider = DummyAlertProvider()
+        manager.register_provider(AlertTier.SILENT, silent_provider)
+        manager.register_provider(AlertTier.AUDIBLE, audible_provider)
+
+        manager.dispatch(_make_result(AlertTier.AUDIBLE))
+        assert manager.current_tier == AlertTier.AUDIBLE
+
+        manager.dispatch(_make_result(AlertTier.SILENT))
+        assert manager.current_tier == AlertTier.SILENT
+        assert len(silent_provider.triggered) == 1
+
+    def test_cooldown_per_tier_blocks_second_dispatch(self):
+        manager = TieredAlertManager(cooldowns={AlertTier.SILENT: 100.0})
+        provider = DummyAlertProvider()
+        manager.register_provider(AlertTier.SILENT, provider)
+
+        result = _make_result(AlertTier.SILENT)
+        manager.dispatch(result)
+        manager.dispatch(result)   # within cooldown — should be blocked
+
+        assert len(provider.triggered) == 1
+
+    def test_no_provider_for_tier_is_noop(self):
+        """Dispatching with no registered provider for a tier must not raise."""
+        manager = TieredAlertManager()
+        result = _make_result(AlertTier.CRITICAL)
+        manager.dispatch(result)  # no provider registered — noop
+        assert manager.current_tier == AlertTier.CRITICAL
