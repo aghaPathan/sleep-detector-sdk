@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -67,4 +67,57 @@ class FrameResult:
     eye_state: EyeState
     face_detected: bool
     is_drowsy: bool
+    timestamp: float
+
+
+@dataclass(frozen=True)
+class FatigueSignal:
+    score: float
+    confidence: float
+    source: str
+    timestamp: float
+
+
+@dataclass(frozen=True)
+class SensorMetadata:
+    name: str
+    version: str
+    sampling_hz: float
+
+
+class AlertTier(Enum):
+    SILENT = "silent"
+    AUDIBLE = "audible"
+    CRITICAL = "critical"
+
+
+@dataclass(frozen=True)
+class FusionResult:
+    fatigue_score: float
+    tier: AlertTier
+    signals: list  # List[FatigueSignal] — use list for 3.8 compat
+    timestamp: float
+
+
+class GazeZone(Enum):
+    ROAD = "road"
+    IN_VEHICLE = "in_vehicle"
+    EXTERNAL = "external"
+
+
+@dataclass(frozen=True)
+class GazeEvent:
+    zone: GazeZone
+    yaw: float
+    pitch: float
+    timestamp: float
+
+
+@dataclass(frozen=True)
+class TemporalState:
+    t_zero: Optional[float]
+    t_away: Optional[float]
+    t_gaze: Optional[float]
+    t_road: Optional[float]
+    t_close: Optional[float]
     timestamp: float
