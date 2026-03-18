@@ -1,6 +1,6 @@
 """Sleep Detector SDK — Real-time drowsiness detection using EAR algorithm."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from sleep_detector_sdk.alerts import AlertHandler, AlertManager, AlertProvider, TieredAlertManager
 from sleep_detector_sdk.ear import compute_ear

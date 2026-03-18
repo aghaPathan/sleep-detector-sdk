@@ -39,3 +39,6 @@ jobs:
       - name: Run tests with coverage
         run: |
           pytest --cov=sleep_detector_sdk --cov-report=term-missing --cov-fail-under=80
+
+      - name: Build package
+        run: python -m build
